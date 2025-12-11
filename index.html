@@ -4,148 +4,61 @@
   <meta charset="UTF-8" />
   <title>Study Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- フォント -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&display=swap"
-    rel="stylesheet"
-  />
-
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <header class="app-header">
-    <div class="app-container app-header-inner">
-      <div class="app-logo">
-        <span class="app-logo-mark">m</span>
-        <span class="app-logo-text">Study Tracker</span>
-      </div>
-      <p class="app-header-sub">
-        HTML / CSS / JavaScript の学習ログ & 用語メモ
-      </p>
-    </div>
-  </header>
+  <main class="page">
+    <!-- タイマー＆ステータス -->
+    <section class="section" id="timer-section">
+      <h1 class="section-title">Study Tracker</h1>
 
-  <main class="app-main">
-    <div class="app-container">
-
-      <!-- タブ切り替え -->
-      <div class="tabs">
-        <button class="tab-button active" data-tab="log">学習ログ</button>
-        <button class="tab-button" data-tab="memo">用語メモ</button>
+      <!-- 設定 -->
+      <div class="timer-settings card">
+        <div class="field">
+          <label for="focusMinutes">勉強時間（分）</label>
+          <input type="number" id="focusMinutes" value="25" min="1" max="180" />
+        </div>
+        <div class="field">
+          <label for="breakMinutes">休憩時間（分）</label>
+          <input type="number" id="breakMinutes" value="5" min="1" max="60" />
+        </div>
       </div>
 
-      <!-- 学習ログタブ -->
-      <section id="tab-log" class="tab-panel active">
-        <h2 class="section-title">学習ログ</h2>
+      <!-- タイマー本体 -->
+      <div class="timer-display card">
+        <div class="timer-phase" id="timerPhase">待機中</div>
+        <div class="timer-time" id="timerTime">00:00</div>
+        <div class="timer-buttons">
+          <button id="btnStart">スタート</button>
+          <button id="btnPause">一時停止</button>
+          <button id="btnResume">再開</button>
+          <button id="btnEnd">終了</button>
+        </div>
+      </div>
 
-        <form id="log-form" class="card form-card">
-          <div class="form-row">
-            <label for="log-date">日付</label>
-            <input type="date" id="log-date" required />
-          </div>
-
-          <div class="form-row">
-            <label for="log-topic">内容</label>
-            <input
-              type="text"
-              id="log-topic"
-              placeholder="例）HTMLのタグ、Flexbox、JSのif文"
-              required
-            />
-          </div>
-
-          <div class="form-row">
-            <label for="log-minutes">時間（分）</label>
-            <input
-              type="number"
-              id="log-minutes"
-              min="1"
-              step="1"
-              placeholder="例）30"
-              required
-            />
-          </div>
-
-          <button type="submit" class="primary-button">
-            ＋ ログを追加
-          </button>
-        </form>
-
-        <div class="card summary-card">
-          <p class="summary-label">その日の合計学習時間</p>
-          <p class="summary-value"><span id="total-minutes">0</span> 分</p>
+      <!-- 記録と育成 -->
+      <div class="stats-wrapper">
+        <div class="card">
+          <h2 class="sub-title">学習記録</h2>
+          <p>累計セッション：<span id="statSessions">0</span> 回</p>
+          <p>累計勉強時間：<span id="statMinutes">0</span> 分</p>
         </div>
 
-        <div class="card list-card">
-          <div class="list-header">
-            <h3>学習履歴</h3>
-            <button id="clear-log" class="link-button">全削除</button>
+        <div class="card">
+          <h2 class="sub-title">育成ステータス</h2>
+          <p>学習レベル：<span id="statLevel">1</span></p>
+          <p>次のレベルまで：<span id="statToNext">60</span> 分</p>
+          <div class="progress-bar">
+            <div class="progress-bar-inner" id="progressBar"></div>
           </div>
-          <ul id="log-list" class="item-list">
-            <!-- JSで学習ログを追加 -->
-          </ul>
-          <p class="empty-text" id="log-empty">
-            まだ学習ログがありません。上のフォームから追加してみてください。
-          </p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      <!-- 用語メモタブ -->
-      <section id="tab-memo" class="tab-panel">
-        <h2 class="section-title">用語メモ</h2>
-
-        <form id="memo-form" class="card form-card">
-          <div class="form-row">
-            <label for="memo-term">用語</label>
-            <input
-              type="text"
-              id="memo-term"
-              placeholder="例）DOM、Flexbox、ローカルストレージ"
-              required
-            />
-          </div>
-
-          <div class="form-row">
-            <label for="memo-note">メモ</label>
-            <textarea
-              id="memo-note"
-              rows="3"
-              placeholder="自分の言葉で意味を書いてみると理解が深まるよ"
-              required
-            ></textarea>
-          </div>
-
-          <button type="submit" class="primary-button">
-            ＋ 用語を追加
-          </button>
-        </form>
-
-        <div class="card list-card">
-          <div class="list-header">
-            <h3>用語リスト</h3>
-            <button id="clear-memo" class="link-button">全削除</button>
-          </div>
-          <ul id="memo-list" class="item-list">
-            <!-- JSで用語メモを追加 -->
-          </ul>
-          <p class="empty-text" id="memo-empty">
-            まだ用語メモがありません。わからなかった単語をどんどん追加してOKです。
-          </p>
-        </div>
-      </section>
-
-    </div>
+    <!-- ここに今の「教科書メモ」UIを後でくっつける想定 -->
   </main>
-
-  <footer class="app-footer">
-    <div class="app-container">
-      <p class="footer-text">© 2025 Malukn | Study Tracker</p>
-    </div>
-  </footer>
 
   <script src="./script.js"></script>
 </body>
 </html>
+
