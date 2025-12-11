@@ -1,250 +1,189 @@
-// ====== localStorage 用のキー ======
-const STORAGE_KEYS = {
-  LOGS: "studyLogs",
-  MEMOS: "studyMemos",
+// ==== 定数・状態 ==========================
+const STORAGE_KEY = "studyTrackerStats_v1";
+
+const phaseLabel = {
+  idle: "待機中",
+  focus: "勉強中",
+  break: "休憩中",
 };
 
-// ====== 共通：localStorage 読み書き ======
-const loadFromStorage = (key) => {
+const stats = {
+  totalFocusMs: 0,
+  sessionCount: 0,
+};
+
+let timerState = {
+  phase: "idle", // idle | focus | break
+  remainingMs: 0,
+  focusMs: 25 * 60 * 1000,
+  breakMs: 5 * 60 * 1000,
+  timerId: null,
+};
+
+// ==== DOM取得 ==========================
+const focusInput = document.getElementById("focusMinutes");
+const breakInput = document.getElementById("breakMinutes");
+
+const phaseEl = document.getElementById("timerPhase");
+const timeEl = document.getElementById("timerTime");
+
+const btnStart = document.getElementById("btnStart");
+const btnPause = document.getElementById("btnPause");
+const btnResume = document.getElementById("btnResume");
+const btnEnd = document.getElementById("btnEnd");
+
+const statSessionsEl = document.getElementById("statSessions");
+const statMinutesEl = document.getElementById("statMinutes");
+const statLevelEl = document.getElementById("statLevel");
+const statToNextEl = document.getElementById("statToNext");
+const progressBarEl = document.getElementById("progressBar");
+
+// ==== ローカルストレージ =================
+
+function loadStats() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return;
   try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    console.error("load error", e);
-    return [];
+    const data = JSON.parse(saved);
+    stats.totalFocusMs = data.totalFocusMs ?? 0;
+    stats.sessionCount = data.sessionCount ?? 0;
+  } catch {
+    // 壊れてたら諦める
   }
-};
+}
 
-const saveToStorage = (key, data) => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
+function saveStats() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(stats));
+}
 
-// ====== タブ切り替え ======
-const setupTabs = () => {
-  const tabButtons = document.querySelectorAll(".tab-button");
-  const tabPanels = document.querySelectorAll(".tab-panel");
+// ==== 表示更新 ==========================
+function formatTime(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
 
-  tabButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const targetId = btn.dataset.tab; // "log" or "memo"
+// レベル設計：合計勉強「1時間」でレベル1アップ
+// 例：0〜59分 → Lv1, 60〜119分 → Lv2 みたいな感じ
+function updateStatsView() {
+  statSessionsEl.textContent = stats.sessionCount;
+  const totalMinutes = Math.floor(stats.totalFocusMs / 60000);
+  statMinutesEl.textContent = totalMinutes;
 
-      // ボタンの active 付け替え
-      tabButtons.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
+  const levelBase = 60; // 1レベルあたり60分
+  const level = Math.floor(totalMinutes / levelBase) + 1;
+  const usedMinutes = (level - 1) * levelBase;
+  const toNext = levelBase - (totalMinutes - usedMinutes);
 
-      // パネルの active 切り替え
-      tabPanels.forEach((panel) => {
-        panel.classList.toggle("active", panel.id === `tab-${targetId}`);
-      });
-    });
-  });
-};
+  statLevelEl.textContent = level;
+  statToNextEl.textContent = toNext > 0 ? toNext : 0;
 
-// ====== 学習ログ ======
-let logs = [];
+  // 進捗バー
+  const progress =
+    ((totalMinutes - usedMinutes) / levelBase) * 100;
+  progressBarEl.style.width = `${Math.min(
+    100,
+    Math.max(0, progress)
+  )}%`;
+}
 
-const renderLogs = () => {
-  const listEl = document.getElementById("log-list");
-  const emptyEl = document.getElementById("log-empty");
-  const totalEl = document.getElementById("total-minutes");
+function updateTimerView() {
+  phaseEl.textContent = phaseLabel[timerState.phase];
+  timeEl.textContent = formatTime(timerState.remainingMs);
+}
 
-  listEl.innerHTML = "";
+// ==== タイマー処理 =======================
+function clearTimer() {
+  if (timerState.timerId !== null) {
+    clearInterval(timerState.timerId);
+    timerState.timerId = null;
+  }
+}
 
-  if (!logs.length) {
-    emptyEl.style.display = "block";
-    totalEl.textContent = "0";
+function startFocus() {
+  const focusMin = Number(focusInput.value) || 25;
+  const breakMin = Number(breakInput.value) || 5;
+
+  timerState.focusMs = focusMin * 60 * 1000;
+  timerState.breakMs = breakMin * 60 * 1000;
+  timerState.phase = "focus";
+  timerState.remainingMs = timerState.focusMs;
+
+  clearTimer();
+  timerState.timerId = setInterval(tick, 1000);
+  updateTimerView();
+}
+
+function startBreak() {
+  timerState.phase = "break";
+  timerState.remainingMs = timerState.breakMs;
+
+  clearTimer();
+  timerState.timerId = setInterval(tick, 1000);
+  updateTimerView();
+}
+
+function tick() {
+  timerState.remainingMs -= 1000;
+  if (timerState.remainingMs <= 0) {
+    // 終了処理
+    if (timerState.phase === "focus") {
+      // 勉強1セット完了
+      stats.totalFocusMs += timerState.focusMs;
+      stats.sessionCount += 1;
+      saveStats();
+      updateStatsView();
+
+      // 自動で休憩に移行
+      startBreak();
+    } else if (timerState.phase === "break") {
+      // 休憩終わったら待機に戻る
+      timerState.phase = "idle";
+      timerState.remainingMs = 0;
+      clearTimer();
+      updateTimerView();
+    }
+  } else {
+    updateTimerView();
+  }
+}
+
+// ==== ボタン操作 ========================
+btnStart.addEventListener("click", () => {
+  if (timerState.phase === "focus" && timerState.timerId) {
+    // すでに勉強中なら無視
     return;
   }
-
-  emptyEl.style.display = "none";
-
-  let total = 0;
-
-  logs.forEach((log, index) => {
-    total += Number(log.minutes) || 0;
-
-    const li = document.createElement("li");
-    li.className = "item";
-
-    const top = document.createElement("div");
-    top.className = "item-top";
-
-    const main = document.createElement("div");
-    main.className = "item-main";
-    main.textContent = `${log.date} ／ ${log.topic}`;
-
-    const minutes = document.createElement("div");
-    minutes.className = "item-sub";
-    minutes.textContent = `${log.minutes} 分`;
-
-    top.appendChild(main);
-    top.appendChild(minutes);
-
-    const actions = document.createElement("div");
-    actions.className = "item-actions";
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "item-delete";
-    delBtn.textContent = "削除";
-    delBtn.addEventListener("click", () => {
-      logs.splice(index, 1);
-      saveToStorage(STORAGE_KEYS.LOGS, logs);
-      renderLogs();
-    });
-
-    actions.appendChild(delBtn);
-
-    li.appendChild(top);
-    li.appendChild(actions);
-
-    listEl.appendChild(li);
-  });
-
-  totalEl.textContent = total.toString();
-};
-
-const setupLogForm = () => {
-  const form = document.getElementById("log-form");
-  const dateInput = document.getElementById("log-date");
-  const topicInput = document.getElementById("log-topic");
-  const minutesInput = document.getElementById("log-minutes");
-  const clearButton = document.getElementById("clear-log");
-
-  // デフォルト日付を今日に
-  const today = new Date().toISOString().slice(0, 10);
-  dateInput.value = today;
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-
-    const date = dateInput.value;
-    const topic = topicInput.value.trim();
-    const minutes = minutesInput.value;
-
-    if (!date || !topic || !minutes) return;
-
-    logs.push({ date, topic, minutes });
-    saveToStorage(STORAGE_KEYS.LOGS, logs);
-    renderLogs();
-
-    topicInput.value = "";
-    minutesInput.value = "";
-    topicInput.focus();
-  });
-
-  clearButton.addEventListener("click", () => {
-    if (!logs.length) return;
-    if (!window.confirm("学習ログをすべて削除しますか？")) return;
-    logs = [];
-    saveToStorage(STORAGE_KEYS.LOGS, logs);
-    renderLogs();
-  });
-};
-
-// ====== 用語メモ ======
-let memos = [];
-
-const renderMemos = () => {
-  const listEl = document.getElementById("memo-list");
-  const emptyEl = document.getElementById("memo-empty");
-
-  listEl.innerHTML = "";
-
-  if (!memos.length) {
-    emptyEl.style.display = "block";
-    return;
-  }
-
-  emptyEl.style.display = "none";
-
-  memos.forEach((memo, index) => {
-    const li = document.createElement("li");
-    li.className = "item";
-
-    const top = document.createElement("div");
-    top.className = "item-top";
-
-    const term = document.createElement("div");
-    term.className = "item-main";
-    term.textContent = memo.term;
-
-    const date = document.createElement("div");
-    date.className = "item-sub";
-    date.textContent = memo.date;
-
-    top.appendChild(term);
-    top.appendChild(date);
-
-    const note = document.createElement("div");
-    note.className = "item-sub";
-    note.textContent = memo.note;
-
-    const actions = document.createElement("div");
-    actions.className = "item-actions";
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "item-delete";
-    delBtn.textContent = "削除";
-    delBtn.addEventListener("click", () => {
-      memos.splice(index, 1);
-      saveToStorage(STORAGE_KEYS.MEMOS, memos);
-      renderMemos();
-    });
-
-    actions.appendChild(delBtn);
-
-    li.appendChild(top);
-    li.appendChild(note);
-    li.appendChild(actions);
-
-    listEl.appendChild(li);
-  });
-};
-
-const setupMemoForm = () => {
-  const form = document.getElementById("memo-form");
-  const termInput = document.getElementById("memo-term");
-  const noteInput = document.getElementById("memo-note");
-  const clearButton = document.getElementById("clear-memo");
-
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
-
-    const term = termInput.value.trim();
-    const note = noteInput.value.trim();
-
-    if (!term || !note) return;
-
-    const today = new Date().toISOString().slice(0, 10);
-
-    memos.push({ term, note, date: today });
-    saveToStorage(STORAGE_KEYS.MEMOS, memos);
-    renderMemos();
-
-    termInput.value = "";
-    noteInput.value = "";
-    termInput.focus();
-  });
-
-  clearButton.addEventListener("click", () => {
-    if (!memos.length) return;
-    if (!window.confirm("用語メモをすべて削除しますか？")) return;
-    memos = [];
-    saveToStorage(STORAGE_KEYS.MEMOS, memos);
-    renderMemos();
-  });
-};
-
-// ====== 初期化 ======
-document.addEventListener("DOMContentLoaded", () => {
-  setupTabs();
-
-  logs = loadFromStorage(STORAGE_KEYS.LOGS);
-  memos = loadFromStorage(STORAGE_KEYS.MEMOS);
-
-  setupLogForm();
-  setupMemoForm();
-
-  renderLogs();
-  renderMemos();
+  startFocus();
 });
+
+btnPause.addEventListener("click", () => {
+  if (timerState.timerId === null) return;
+  clearTimer();
+  // phase は維持したまま「一時停止」
+  phaseEl.textContent = phaseLabel[timerState.phase] + "（一時停止中）";
+});
+
+btnResume.addEventListener("click", () => {
+  if (timerState.timerId !== null) return;
+  if (timerState.phase === "idle") return;
+  // 再開
+  timerState.timerId = setInterval(tick, 1000);
+  updateTimerView();
+});
+
+btnEnd.addEventListener("click", () => {
+  clearTimer();
+  timerState.phase = "idle";
+  timerState.remainingMs = 0;
+  updateTimerView();
+});
+
+// ==== 初期化 ============================
+loadStats();
+updateStatsView();
+
+// 初期タイマー表示（とりあえず勉強時間でセット）
+timerState.remainingMs = Number(focusInput.value || 25) * 60 * 1000;
+updateTimerView();
